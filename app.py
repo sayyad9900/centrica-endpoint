@@ -7,8 +7,13 @@ app = Flask(__name__)
 def index():
     return "Server is up and running", 200
 
-@app.route('/data', methods=['POST'])
+@app.route('/data', methods=['GET', 'POST'])
 def handle_data():
+    if request.method == 'GET':
+        return jsonify({
+            "message": "Send a POST request with JSON data to this endpoint."
+        }), 200
+
     # Log request headers and raw data for debugging
     print(f"Request headers: {request.headers}")
     print(f"Raw request data: {request.data}")
@@ -60,3 +65,4 @@ if __name__ == "__main__":
     import os
     port = int(os.getenv("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
+
