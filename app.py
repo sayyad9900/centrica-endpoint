@@ -14,51 +14,44 @@ def handle_data():
             "message": "Send a POST request with JSON data to this endpoint."
         }), 200
 
-    # Log request headers and raw data for debugging
+    # Log request headers and raw data
     print(f"Request headers: {request.headers}")
     print(f"Raw request data: {request.data}")
 
-    # Check if the request contains JSON data
-    if not request.is_json:
+    try:
+        data = request.get_json(force=True)
+    except Exception as e:
+        print(f"JSON decode error: {e}")
+        return jsonify({
+            "error": "Request must contain valid JSON data"
+        }), 400
+
+    # Validate presence of 'measurements'
+    if 'measurements' not in data or not isinstance(data['measurements'], list):
+        return jsonify({"error": "Missing or invalid 'measurements' list in payload"}), 400
+
+    processed = []
+    for i, m in enumerate(data['measurements']):
         try:
-            # Attempt to parse raw data as JSON if Content-Type is missing
-            if request.data:
-                data = json.loads(request.data)
-            else:
-                return jsonify({
-                    "error": "Request must contain JSON data",
-                    "details": "No data received or Content-Type is not application/json"
-                }), 400
-        except json.JSONDecodeError:
-            return jsonify({
-                "error": "Request must contain valid JSON data",
-                "details": "Invalid JSON format or missing Content-Type: application/json"
-            }), 400
-    else:
-        data = request.json
+            processed_entry = {
+                "site_name": m["site_name"],
+                "energy": m["energy(Wh)"],
+                "current": m["current(A)"],
+                "voltage": m["voltage(V)"],
+                "power": m["power(W)"]
+            }
+            processed.append(processed_entry)
+        except KeyError as e:
+            print(f"Validation error in measurement {i}: missing {e}")
+            return jsonify({"error": f"Missing expected field in measurement {i}: {e}"}), 400
+        except Exception as e:
+            print(f"Unexpected error in measurement {i}: {e}")
+            return jsonify({"error": f"Error processing measurement {i}: {e}"}), 400
 
-    # Define required fields and their expected types
-    required_fields = {
-        "energy": (int, float),
-        "current": (int, float),
-        "voltage": (int, float),
-        "power": (int, float)
-    }
+    # Log processed data
+    print(f"Processed data: {processed}")
 
-    # Validate the presence and type of required fields
-    for field, expected_type in required_fields.items():
-        if field not in data:
-            print(f"Validation error: Missing field {field}")
-            return jsonify({"error": f"Missing required field: {field}"}), 400
-        if not isinstance(data[field], expected_type):
-            print(f"Validation error: Field {field} type mismatch, got {type(data[field])}, expected {expected_type}")
-            return jsonify({"error": f"Field '{field}' must be of type {expected_type.__name__}"}), 400
-
-    # Log the received data
-    print(f"Data received: {data}")
-
-    # Return success response
-    return jsonify({"message": "Data received", "data": data}), 200
+    return jsonify({"message": "Measurements received", "data": processed}), 200
 
 if __name__ == "__main__":
     import os
