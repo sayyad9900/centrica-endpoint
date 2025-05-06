@@ -34,7 +34,7 @@ def handle_data():
 
     # Define required fields and their expected types
     required_fields = {
-        "timestamp": str,
+        "site_name": str,
         "energy": (int, float),
         "current": (int, float),
         "voltage": (int, float),
