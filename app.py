@@ -3,58 +3,83 @@ import json
 
 app = Flask(__name__)
 
+# Store the last received data
+last_received_data = []
+
 @app.route('/')
 def index():
     return "Server is up and running", 200
 
 @app.route('/data', methods=['GET', 'POST'])
 def handle_data():
+    global last_received_data
+
     if request.method == 'GET':
+        if not last_received_data:
+            return jsonify({"message": "No data received yet."}), 200
         return jsonify({
-            "message": "Send a POST request with JSON data to this endpoint."
+            "message": "Last received data",
+            "data": last_received_data
         }), 200
 
-    # Log request headers and raw data
+    # POST request
     print(f"Request headers: {request.headers}")
     print(f"Raw request data: {request.data}")
 
-    try:
-        data = request.get_json(force=True)
-    except Exception as e:
-        print(f"JSON decode error: {e}")
+    # Check if the request contains JSON
+    if not request.is_json:
+        try:
+            if request.data:
+                data = json.loads(request.data)
+            else:
+                return jsonify({
+                    "error": "Request must contain JSON data",
+                    "details": "No data received or Content-Type is not application/json"
+                }), 400
+        except json.JSONDecodeError:
+            return jsonify({
+                "error": "Request must contain valid JSON data",
+                "details": "Invalid JSON format or missing Content-Type: application/json"
+            }), 400
+    else:
+        data = request.get_json()
+
+    if "measurements" not in data or not isinstance(data["measurements"], list):
         return jsonify({
-            "error": "Request must contain valid JSON data"
+            "error": "Missing or invalid 'measurements' field. It must be a list."
         }), 400
 
-    # Validate presence of 'measurements'
-    if 'measurements' not in data or not isinstance(data['measurements'], list):
-        return jsonify({"error": "Missing or invalid 'measurements' list in payload"}), 400
+    validated_measurements = []
+    for i, item in enumerate(data["measurements"]):
+        required_fields = {
+            "site_name": str,
+            "energy(Wh)": (int, float),
+            "current(A)": (int, float),
+            "voltage(V)": (int, float),
+            "power(W)": (int, float)
+        }
 
-    processed = []
-    for i, m in enumerate(data['measurements']):
-        try:
-            processed_entry = {
-                "site_name": m["site_name"],
-                "energy": m["energy(Wh)"],
-                "current": m["current(A)"],
-                "voltage": m["voltage(V)"],
-                "power": m["power(W)"]
-            }
-            processed.append(processed_entry)
-        except KeyError as e:
-            print(f"Validation error in measurement {i}: missing {e}")
-            return jsonify({"error": f"Missing expected field in measurement {i}: {e}"}), 400
-        except Exception as e:
-            print(f"Unexpected error in measurement {i}: {e}")
-            return jsonify({"error": f"Error processing measurement {i}: {e}"}), 400
+        validated = {}
+        for field, expected_type in required_fields.items():
+            if field not in item:
+                return jsonify({"error": f"Missing required field '{field}' in measurement {i}"}), 400
+            if not isinstance(item[field], expected_type):
+                return jsonify({"error": f"Field '{field}' in measurement {i} must be of type {expected_type}"}), 400
 
-    # Log processed data
-    print(f"Processed data: {processed}")
+            # Normalize field names
+            normalized_key = field.split('(')[0].strip().lower()
+            validated[normalized_key] = item[field]
 
-    return jsonify({"message": "Measurements received", "data": processed}), 200
+        validated_measurements.append(validated)
+
+    # Store in memory
+    last_received_data = validated_measurements
+
+    print(f"Data received: {validated_measurements}")
+
+    return jsonify({"message": "Measurements received", "data": validated_measurements}), 200
 
 if __name__ == "__main__":
     import os
     port = int(os.getenv("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
-
